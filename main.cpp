@@ -4,7 +4,6 @@
 
 int main()
 {
-  // find and open game window
   HWND game_window = FindWindow(NULL, L"The Battle for Wesnoth - 1.18.4");
 
   if (!game_window) {
