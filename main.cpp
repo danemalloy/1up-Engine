@@ -1,62 +1,55 @@
 #include <iostream>
-// windows api includes
 #include <Windows.h>
+#include <TlHelp32.h>
+#include "operations.h"
 
-int main()
+int main(int argc, char** argv)
 {
-  HWND game_window = FindWindow(NULL, L"The Battle for Wesnoth - 1.18.4");
+  HANDLE process_snapshot{ 0 };
+  PROCESSENTRY32W process_entry{};
 
-  if (!game_window) {
-    std::cerr << "game window not found" << "\n";
-    return 1;
-  }
+  process_entry.dwSize = sizeof(PROCESSENTRY32W);
 
-  DWORD process_id{ 0 };
-  GetWindowThreadProcessId(game_window, &process_id);
+  process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  Process32FirstW(process_snapshot, &process_entry);
 
-  HANDLE game_process{ OpenProcess(PROCESS_ALL_ACCESS, true, process_id) };
-
-  if (!game_process) {
-    std::cerr << "failed to open process | error code: " << GetLastError() << "\n";
-    return 1;
-  }
-
-  uintptr_t input_address{ 0 };
-
-  std::cout << "enter memory address: ";
-  std::cin >> std::hex >> input_address;
-
-  void* memory_address{ (void*)input_address };
-  DWORD memory_value{ 0 };
-
-  unsigned long long bytes_read{ 0 };
-
-  if (!ReadProcessMemory(game_process, (LPCVOID)memory_address, &memory_value, sizeof(memory_value), &bytes_read))
+  do
   {
-    std::cerr << "failed to read value of process memory | error code: " << GetLastError() << "\n";
-    return 1;
-  }
+    if (wcscmp(process_entry.szExeFile, L"wesnoth.exe") == 0)
+    {
+      HANDLE process{ OpenProcess(PROCESS_ALL_ACCESS, true, process_entry.th32ProcessID) };
 
-  unsigned int input_write_value{ 0 };
-  unsigned long long bytes_written{ 0 };
+      if (!process)
+      {
+        std::cerr << "failed to open process" << std::endl;
+        return 1;
+      }
 
-  std::cout << "enter value to write: ";
-  std::cin >> std::dec >> input_write_value;
+      char* p{ nullptr };
 
-  DWORD write_value{ input_write_value };
+      long value{ strtol(argv[2], &p, 10) };
 
-  std::cout << "writing value " << write_value << " to memory address..." << "\n";
+      if (strcmp(argv[1], "search") == 0)
+      {
+        search(process, value);
+      }
+      else if (strcmp(argv[1], "filter") == 0)
+      {
+        filter(process, value);
+      }
+      /*else if (strcmp(argv[1], "write") == 0)
+      {
+        write(process, value, argv[3]);
+      }*/
+      else
+      {
+        std::cerr << "invalid operation" << std::endl;
+      }
 
-  if (!WriteProcessMemory(game_process, (LPVOID)memory_address, &write_value, sizeof(write_value), &bytes_written))
-  {
-    std::cerr << "failed to write value to process memory | error code: " << GetLastError() << "\n";
-    return 1;
-  }
-
-  std::cout << "address: " << memory_address << "\n" << "previous value: " << memory_value << "\n" << "new value: " << write_value << "\n";
-
-  std::cin.ignore();
-  std::cin.get();
+      CloseHandle(process);
+      break;
+    }
+  } while (Process32NextW(process_snapshot, &process_entry));
 
   return 0;
 }
