@@ -3,7 +3,14 @@
 #include <vector>
 #include "operations.h"
 
-constexpr auto buffer_size{ 0x00000808  };
+#define NOMINMAX
+
+#include <windef.h>
+
+constexpr auto buffer_size = 0x00000808;
+constexpr DWORD PAGE_READABLE_FLAGS =
+PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY |
+PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY;
 
 void scan(const HANDLE process, uintptr_t val)
 {
@@ -29,35 +36,31 @@ void scan(const HANDLE process, uintptr_t val)
   {
     if (!VirtualQueryEx(process, (LPCVOID)current_address, &memory_info, sizeof(memory_info)))
     {
-      std::cerr << "failed to query memory" << "\n";
       current_address += buffer_size;
       continue;
     }
 
-    bool is_readable{ (memory_info.Protect & PAGE_READWRITE) || (memory_info.Protect & PAGE_READONLY) };
-    if (memory_info.State != MEM_COMMIT || !is_readable)
+    if (memory_info.State != MEM_COMMIT || !(memory_info.Protect & PAGE_READABLE_FLAGS))
     {
-      std::cerr << "memory not readable" << "\n";
       current_address += memory_info.RegionSize;
       continue;
     }
 
     SIZE_T bytes_read{ 0 };
-    if (!ReadProcessMemory(process, (LPCVOID)current_address, buffer.data(), memory_info.RegionSize, &bytes_read))
+    SIZE_T bytes_to_read{ (((memory_info.RegionSize) < (static_cast<SIZE_T>(buffer_size))) ? (memory_info.RegionSize) : (static_cast<SIZE_T>(buffer_size))) };
+    if (!ReadProcessMemory(process, (LPCVOID)current_address, buffer.data(), bytes_to_read, &bytes_read))
     {
-      std::cerr << "failed to read memory" << "\n";
       current_address += memory_info.RegionSize;
       continue;
     }
 
-    if (bytes_read < sizeof(int))
+    if (bytes_read < sizeof(uintptr_t))
     {
-      std::cerr << "failed to read enough bytes" << "\n";
       current_address += memory_info.RegionSize;
       continue;
     }
 
-    for (SIZE_T offset = 0; offset < bytes_read - sizeof(int); offset++)
+    for (SIZE_T offset{ 0 }; offset + sizeof(uintptr_t) <= bytes_read; offset += sizeof(uintptr_t))
     {
       uintptr_t value{ 0 };
 
