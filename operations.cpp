@@ -32,6 +32,8 @@ void scan(const HANDLE process, uintptr_t val)
 
   std::vector<unsigned char> buffer(buffer_size);
 
+  int total_found{ 0 };
+
   while (current_address < end_address)
   {
     if (!VirtualQueryEx(process, (LPCVOID)current_address, &memory_info, sizeof(memory_info)))
@@ -69,14 +71,14 @@ void scan(const HANDLE process, uintptr_t val)
       if (value == val)
       {
         fprintf(temp, "%llX\n", (unsigned long long)(current_address + offset));
-        std::cout << "found value at address: " << std::hex << (void*)(current_address + offset) << "\n";
+        total_found++;
       }
     }
 
     current_address += memory_info.RegionSize;
   }
 
-  std::cout << "scan complete" << std::endl;
+  std::cout << "scan complete. addresses found: " << total_found << std::endl;
 
   fclose(temp);
 }
