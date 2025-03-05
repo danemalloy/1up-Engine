@@ -42,20 +42,22 @@ int main(int argc, char** argv)
 
       char* p{ nullptr };
 
-      uintptr_t value{ strtoull(argv[2], &p, 10) };
+      uint64_t value{ strtoull(argv[2], &p, 10) };
 
       if (strcmp(argv[1], "scan") == 0)
       {
         scan(process, value);
       }
-      /*else if (strcmp(argv[1], "filter") == 0)
+      else if (strcmp(argv[1], "filter") == 0)
       {
         filter(process, value);
       }
+      /*
       else if (strcmp(argv[1], "write") == 0)
       {
         write(process, value, argv[3]);
-      }*/
+      }
+      */
       else
       {
         std::cerr << "invalid operation" << std::endl;

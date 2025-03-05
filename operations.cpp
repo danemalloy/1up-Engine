@@ -12,13 +12,13 @@ constexpr DWORD PAGE_READABLE_FLAGS =
 PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY |
 PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY;
 
-void scan(const HANDLE process, uintptr_t val)
+void scan(HANDLE process, uint64_t val)
 {
   FILE* temp{ nullptr };
   fopen_s(&temp, "scan_results.txt", "w");
   if (!temp)
   {
-    std::cerr << "failed to open file" << std::endl;
+    std::cerr << "failed to open file(s)" << std::endl;
     return;
   }
 
@@ -27,8 +27,8 @@ void scan(const HANDLE process, uintptr_t val)
 
   MEMORY_BASIC_INFORMATION memory_info{};
 
-  uintptr_t current_address{ (uintptr_t)system_info.lpMinimumApplicationAddress };
-  uintptr_t end_address{ (uintptr_t)system_info.lpMaximumApplicationAddress };
+  uint64_t current_address{ (uint64_t)system_info.lpMinimumApplicationAddress };
+  uint64_t end_address{ (uint64_t)system_info.lpMaximumApplicationAddress };
 
   std::vector<unsigned char> buffer(buffer_size);
 
@@ -56,21 +56,21 @@ void scan(const HANDLE process, uintptr_t val)
       continue;
     }
 
-    if (bytes_read < sizeof(uintptr_t))
+    if (bytes_read < sizeof(uint64_t))
     {
       current_address += memory_info.RegionSize;
       continue;
     }
 
-    for (SIZE_T offset{ 0 }; offset + sizeof(uintptr_t) <= bytes_read; offset += sizeof(uintptr_t))
+    for (SIZE_T offset{ 0 }; offset + sizeof(uint64_t) <= bytes_read; offset += sizeof(uint64_t))
     {
-      uintptr_t value{ 0 };
+      uint64_t value{ 0 };
 
       memcpy(&value, &buffer[offset], sizeof(value));
 
       if (value == val)
       {
-        fprintf(temp, "%llX\n", (unsigned long long)(current_address + offset));
+        fprintf(temp, "%llX\n", (uint64_t)(current_address + offset));
         total_found++;
       }
     }
@@ -78,13 +78,15 @@ void scan(const HANDLE process, uintptr_t val)
     current_address += memory_info.RegionSize;
   }
 
-  std::cout << "scan complete. addresses found: " << total_found << std::endl;
+  std::cout << "scan complete.\naddresses found: " << std::dec << total_found << std::endl;
 
   fclose(temp);
 }
 
-/*void filter(const HANDLE process, const int val)
+void filter(HANDLE process, uint64_t val)
 {
+  FlushInstructionCache(process, NULL, 0);
+
   FILE* temp{ nullptr };
   FILE* temp_filtered{ nullptr };
 
@@ -92,29 +94,56 @@ void scan(const HANDLE process, uintptr_t val)
   fopen_s(&temp_filtered, "scan_results_filtered.txt", "w");
   if (!temp || !temp_filtered)
   {
-    std::cerr << "failed to open file" << std::endl;
+    std::cerr << "failed to open file(s)" << std::endl;
     return;
   }
 
-  DWORD address{ 0 };
+  std::vector<unsigned char> buffer(buffer_size);
 
-  while (fscanf_s(temp, "%x\n", &address) != EOF)
+  uint64_t address{ 0 };
+  int filtered{ 0 };
+
+  while (fscanf_s(temp, "%llx\n", &address) == 1)
   {
-    uintptr_t value{ 0 };
-    
-    unsigned long long bytes_read{ 0 };
-
-    ReadProcessMemory(process, (LPCVOID)address, &value, sizeof(value), &bytes_read);
-
-    if (!value)
+    if (address == 0)
     {
       continue;
     }
 
-    if (value == val)
+    MEMORY_BASIC_INFORMATION memory_info{};
+    if (VirtualQueryEx(process, (LPCVOID)address, &memory_info, sizeof(memory_info)))
     {
-      fprintf(temp_filtered, "%x\n", address);
-      std::cout << "found value at address " << std::hex << address << "\n";
+      if (memory_info.State != MEM_COMMIT || !(memory_info.Protect & PAGE_READABLE_FLAGS))
+      {
+        continue;
+      }
+    }
+
+    SIZE_T bytes_read{ 0 };
+    SIZE_T bytes_to_read{ (((memory_info.RegionSize) < (static_cast<SIZE_T>(buffer_size))) ? (memory_info.RegionSize) : (static_cast<SIZE_T>(buffer_size))) };
+    if (!ReadProcessMemory(process, (LPCVOID)address, buffer.data(), bytes_to_read, &bytes_read))
+    {
+      continue;
+    }
+    
+    if (bytes_read < sizeof(uint64_t))
+    {
+      continue;
+    }
+    
+    for (SIZE_T offset{ 0 }; offset + sizeof(uint64_t) <= bytes_read; offset += sizeof(uint64_t))
+    {
+      uint64_t value{ 0 };
+
+      memcpy(&value, &buffer[offset], sizeof(value));
+
+      std::cout << "value: " << value << std::endl;
+
+      if (value == val)
+      {
+        fprintf(temp_filtered, "%llx\n", (unsigned long long)(address + offset));
+        filtered++;
+      }
     }
   }
 
@@ -123,14 +152,22 @@ void scan(const HANDLE process, uintptr_t val)
 
   fopen_s(&temp, "scan_results.txt", "w");
   fopen_s(&temp_filtered, "scan_results_filtered.txt", "r");
-
-  while (fscanf_s(temp_filtered, "%x\n", &address) != EOF)
+  if (!temp || !temp_filtered)
   {
-    fprintf(temp, "%x\n", address);
+    std::cerr << "failed to open file(s)" << std::endl;
+    return;
+  }
+
+  uint64_t filtered_address{ 0 };
+  while (fscanf_s(temp_filtered, "%llx\n", &filtered_address) == 1)
+  {
+    fprintf(temp, "%llx\n", (uint64_t)(filtered_address));
   }
 
   fclose(temp);
   fclose(temp_filtered);
 
   remove("scan_results_filtered.txt");
-}*/
+
+  std::cout << "filter complete.\naddresses found: " << filtered << std::endl;
+}
